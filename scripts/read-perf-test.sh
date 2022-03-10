@@ -12,6 +12,9 @@ for read_bytes in "${READ_BYTES[@]}"
 do
   for num_of_queues in "${NUM_OF_QUEUES[@]}"
   do
+    if [[ $((${read_bytes} / ${num_of_queues})) -lt 512 ]]; then
+      continue
+    fi
     sudo ${NVM_INT_BIN} \
       --ctrl=/dev/libnvm0 \
       --read=${read_bytes} \
