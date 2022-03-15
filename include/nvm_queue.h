@@ -10,7 +10,7 @@
 #include <nvm_types.h>
 #include <stdint.h>
 #include <stdbool.h>
-
+#include <stdio.h>
 
 /*
  * Clear queue descriptor.
@@ -127,6 +127,15 @@ nvm_cpl_t* nvm_cq_poll(const nvm_queue_t* cq)
     nvm_cpl_t* cpl = (nvm_cpl_t*) (((unsigned char*) cq->vaddr) + cq->entry_size * cq->head);
 
     nvm_cache_invalidate((void*) cpl, sizeof(nvm_cpl_t));
+    
+    // CHIA-HAO
+    /*
+    printf("%s: SQ Indentifier %u\n", __func__, *((volatile uint32_t*)(&(cpl->dword[2]))) >> 8);
+    printf("%s: SQ Head Pointer %u\n", __func__, *((volatile uint32_t*)(&(cpl->dword[2]))) & 0xffff);
+    printf("%s: Phase Tag %u\n", __func__, (*((volatile uint32_t*)(&(cpl->dword[3]))) >> 16) & 0x1);
+    printf("%s: Status Code %u\n", __func__, (*((volatile uint32_t*)(&(cpl->dword[3]))) >> 16) & 0x1fe);
+    printf("%s: Status Code Type %u\n", __func__, (*((volatile uint32_t*)(&(cpl->dword[3]))) >> 16) & 0xe00);
+    */
 
     // Check if new completion is ready by checking the phase tag
     if (!!_RB(*NVM_CPL_STATUS(cpl), 0, 0) != cq->phase)
@@ -153,6 +162,9 @@ __host__ __device__ static inline
 nvm_cpl_t* nvm_cq_dequeue(nvm_queue_t* cq)
 {
     nvm_cpl_t* cpl = nvm_cq_poll(cq);
+    
+    // CHIA-HAO
+    //printf("%s\n", __func__);
 
     if (cpl != NULL)
     {
@@ -207,6 +219,12 @@ void nvm_sq_submit(nvm_queue_t* sq)
 
         *((volatile uint32_t*) sq->db) = sq->tail;
         sq->last = sq->tail;
+
+        // CHIA-HAO: make sure GPU is calling here, and use __threadfence_system to make sure host memory is updated.
+        #ifdef __CUDA_ARCH__
+        __threadfence_system();
+        printf("Thread %u rings the doorbell.\n", blockDim.x * blockIdx.x + threadIdx.x);
+        #endif
     }
 }
 

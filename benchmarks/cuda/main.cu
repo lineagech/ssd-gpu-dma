@@ -36,6 +36,50 @@ struct __align__(64) CmdTime
     uint64_t    moveTime;
 };
 
+// CHIA-HAO: define some debug structs and functions
+#include "debug.h"
+
+#if BENCH_DEBUG
+pthread_t runtime_check_thread;
+
+__host__ static 
+void* runtimeCheck(void* arg)
+{
+    struct RuntimeCheckStruct* runtime_check = (struct RuntimeCheckStruct*)arg;
+    //const Controller *ctrl = runtime_check->ctrl;
+    //cudaStream_t copy_stream;
+    //cudaStreamCreate(&copy_stream);
+    QueuePair* host_qp = runtime_check->host_qp;
+    //QueuePair* qp = runtime_check->qp;
+    //QueuePair local_qp;
+    nvm_cmd_t cmd;
+    cudaHostRegister(&cmd, sizeof(nvm_cmd_t), cudaHostRegisterDefault);
+    
+    while (1) {
+        //cudaMemcpy((void*)&local_qp, (void*)qp, sizeof(QueuePair));
+        //cudaMemcpy((void*)&cmd, (void*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0), sizeof(nvm_cmd_t), cudaMemcpyDeviceToHost);
+        fprintf(stderr, "%s: Checking cq doorbell -> %u\n", __func__, *(host_qp->cq.host_db));
+        fprintf(stderr, "%s: Checking sq doorbell -> %u\n", __func__, *(host_qp->sq.host_db));
+        if (*(host_qp->sq.host_db) != 0) {
+            //fprintf(stderr, "Runtime-Check: Copy using another stream... for %p\n", (void*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0));
+            //cudaMemcpyAsync((void*)&cmd, (void*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0), sizeof(nvm_cmd_t), cudaMemcpyDeviceToHost, copy_stream);
+            //cudaStreamSynchronize(copy_stream);
+
+            cmd = *((nvm_cmd_t*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0));
+            fprintf(stderr, "%s: %p cid = %u\n", __func__, (void*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0), cmd.dword[0] >> 16);
+            fprintf(stderr, "%s: %p opcode = %u\n", __func__, (void*)((unsigned char*)host_qp->sq.vaddr + host_qp->sq.entry_size * 0), cmd.dword[0] & 0x7f);
+            
+            //sleep(1);
+            break;
+        }
+    }
+    //cudaStreamDestroy(copy_stream);
+    return NULL;
+}
+
+#endif /* END OF BENCH_DEBUG*/
+
+//////////////////////////////////////////
 
 __host__ static
 std::shared_ptr<CmdTime> createReportingList(size_t numEntries, int device)
@@ -132,6 +176,12 @@ nvm_cmd_t* prepareChunk(QueuePair* qp, nvm_cmd_t* last, const uint64_t ioaddr, u
     void* prpList = NVM_PTR_OFFSET(qp->prpList, pageSize, threadOffset);
     uint64_t prpListAddr = NVM_ADDR_OFFSET(qp->prpListIoAddr, pageSize, threadOffset);
 
+    // Chia-Hao
+    #if BENCH_DEBUG
+    printf("%s: thread %u - qp->prpList %p, qp->prpListIoAddr %lx, ioaddr %lx === startLBA %lu, #blocks %u\n", 
+            __func__, threadNum, qp->prpList, qp->prpListIoAddr, ioaddr, currBlock+blockOffset, blocksPerChunk);
+    #endif /* END OF BENCH_DEBUG*/
+
     uint64_t addrs[0x1000 / sizeof(uint64_t)]; // FIXME: This assumes that page size is 4K
     for (uint32_t page = 0; page < chunkPages; ++page)
     {
@@ -140,14 +190,25 @@ nvm_cmd_t* prepareChunk(QueuePair* qp, nvm_cmd_t* last, const uint64_t ioaddr, u
 
     // Enqueue commands
     nvm_cmd_t* cmd = nvm_sq_enqueue_n(&qp->sq, last, numThreads, threadNum);
+    // CHIA-HAO: test with nvm_sq_enqueue, but not working
+    //nvm_cmd_t* cmd = nvm_sq_enqueue(&qp->sq);
 
     // Set command fields
-    nvm_cmd_header(&local, threadNum, NVM_IO_READ, nvmNamespace);
+    nvm_cmd_header(&local, threadNum+1, NVM_IO_READ, nvmNamespace);
     nvm_cmd_data(&local, pageSize, chunkPages, prpList, prpListAddr, addrs);
     nvm_cmd_rw_blks(&local, currBlock + blockOffset, blocksPerChunk);
     
     *cmd = local;
-    __threadfence();
+
+    // CHIA-HAO: comment __threadfence here, add printing
+    #if BENCH_DEBUG
+    printf("%s: cmd addr - %p\n", __func__, cmd);
+    printf("%s: %p cid = %u\n", __func__, cmd, cmd->dword[0] >> 16);
+    printf("%s: %p opcode = %u\n", __func__, cmd, cmd->dword[0] & 0x7f);
+    //__threadfence();
+    __threadfence_system();
+    #endif /* END OF BENCH_DEBUG*/
+
     return cmd;
 }
 
@@ -333,8 +394,14 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
         if (threadNum == 0)
         {
             nvm_sq_submit(sq);
+
             waitForIoCompletion(&qp->cq, sq, errCount);
         }
+        // CHIA-HAO
+        #if BENCH_DEBUG
+        printf("%s: thread %u - wait for completion done!\n", __func__, threadNum);
+        #endif /* END OF BENCH_DEBUG*/
+
         __syncthreads();
         auto afterSync = clock();
 
@@ -398,10 +465,13 @@ static void printStatistics(const Settings& settings, const cudaDeviceProp& prop
 static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, const Settings& settings, const cudaDeviceProp& prop)
 {
     QueuePair queuePair;
-    DmaPtr queueMemory = prepareQueuePair(queuePair, ctrl, settings);
+    // CHIA-HAO: use prepareQueuePairOnHost instead
+    //DmaPtr queueMemory = prepareQueuePair(queuePair, ctrl, settings);
+    DmaPtr queueMemory = prepareQueuePairOnHost(queuePair, ctrl, settings);
 
     // Set up and prepare queues
-    auto deviceQueue = createBuffer(sizeof(QueuePair), settings.cudaDevice);
+    // CHIA-HAO: comment cudaDevice
+    auto deviceQueue = createBuffer(sizeof(QueuePair)/*, settings.cudaDevice*/);
     auto err = cudaMemcpy(deviceQueue.get(), &queuePair, sizeof(QueuePair), cudaMemcpyHostToDevice);
     if (err != cudaSuccess)
     {
@@ -435,6 +505,13 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
     {
         throw err;
     }
+    
+    // CHIA-HAO: create runtime check
+    #if BENCH_DEBUG
+    struct RuntimeCheckStruct runtime_check_args = {.ctrl=&ctrl, .host_qp=&queuePair, .qp=(QueuePair*)deviceQueue.get()};
+    pthread_create(&runtime_check_thread, NULL, runtimeCheck, &runtime_check_args);
+    #endif /* END OF BENCH_DEBUG*/
+    
 
     // Launch kernel
     double elapsed = 0;
@@ -447,7 +524,15 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
         }
         else
         {
+            // CHIA-HAO: use multiple streams here for debugging
+            #if BENCH_DEBUG
+            cudaStream_t exec_stream;
+            cudaStreamCreate(&exec_stream);
+            fprintf(stderr, "Exec using another stream...\n");
+            readSingleBuffered<<<1, settings.numThreads, 0, exec_stream>>>((QueuePair*) deviceQueue.get(), source->ioaddrs[0], source->vaddr, destination.get(), totalChunks, settings.startBlock, ec, times.get());
+            #else
             readSingleBuffered<<<1, settings.numThreads>>>((QueuePair*) deviceQueue.get(), source->ioaddrs[0], source->vaddr, destination.get(), totalChunks, settings.startBlock, ec, times.get());
+            #endif /* END OF BENCH_DEBUG*/
         }
         Event after;
 
@@ -484,6 +569,11 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
     {
         printStatistics(settings, prop, times);
     }
+    
+    // CHIA-HAO: join runtime check thread
+    #if BENCH_DEBUG
+    pthread_join(runtime_check_thread, NULL);
+    #endif /* END OF BENCH_DEBUG*/
 
     return elapsed;
 }
@@ -677,6 +767,8 @@ int main(int argc, char** argv)
         fprintf(stderr, "Total number of pages : %zu\n", totalPages);
         fprintf(stderr, "Total number of blocks: %zu\n", totalBlocks);
         fprintf(stderr, "Double buffering      : %s\n", settings.doubleBuffered ? "yes" : "no");
+        fprintf(stderr, "Number of completion queue: %u\n", ctrl.n_cqs);
+        fprintf(stderr, "Number of submission queue: %u\n", ctrl.n_sqs);
 
         auto outputBuffer = createBuffer(ctrl.info.page_size * totalPages, settings.cudaDevice);
 

@@ -25,6 +25,9 @@ DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, uint32_t adapter, uint32_t
 
 DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t adapter, uint32_t id);
 
+// CHIA-HAO
+DmaPtr createDmaOnHost(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t, uint32_t);
+
 
 BufferPtr createBuffer(size_t size);
 

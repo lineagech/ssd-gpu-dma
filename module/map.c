@@ -82,10 +82,12 @@ struct map* map_find(const struct list* list, u64 vaddr)
     while (element != NULL)
     {
         map = container_of(element, struct map, list);
-
-        if (map->owner == current)
+        
+        // CHIA-HAO: comment here
+        //           it shoud not compare with current task and mask with GPU_PAGE_MASK 
+        //if (map->owner == current)
         {
-            if (map->vaddr == (vaddr & PAGE_MASK) || map->vaddr == (vaddr & GPU_PAGE_MASK))
+            if (map->vaddr == (vaddr & PAGE_MASK) /*|| map->vaddr == (vaddr & GPU_PAGE_MASK)*/)
             {
                 return map;
             }
@@ -93,7 +95,7 @@ struct map* map_find(const struct list* list, u64 vaddr)
 
         element = list_next(element);
     }
-
+    
     return NULL;
 }
 
@@ -209,8 +211,8 @@ struct map* map_userspace(struct list* list, const struct ctrl* ctrl, u64 vaddr,
 
     list_insert(list, &md->list);
 
-    //printk(KERN_DEBUG "Mapped %lu host pages starting at address %llx\n", 
-    //        md->n_addrs, md->vaddr);
+    printk(KERN_DEBUG "Mapped %lu host pages starting at address %llx\n", 
+            md->n_addrs, md->vaddr);
     return md;
 }
 

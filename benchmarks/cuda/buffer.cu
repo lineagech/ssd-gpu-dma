@@ -109,6 +109,8 @@ DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice)
     }
 
     //dma->vaddr = bufferPtr;
+    // CHIA-HAO
+    fprintf(stderr, "bufferPtr %p, devicePtr %p, dma vaddr %p, dma ioaddr %lx\n", bufferPtr, devicePtr, dma->vaddr, dma->ioaddrs[0]);
 
     return DmaPtr(dma, [bufferPtr](nvm_dma_t* dma) {
         nvm_dma_unmap(dma);
@@ -199,6 +201,12 @@ DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t, 
 {
     return createDma(ctrl, size, cudaDevice);
 }
+
+DmaPtr createDmaOnHost(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t, uint32_t)
+{
+    return createDma(ctrl, size);
+}
+
 #endif
 
 

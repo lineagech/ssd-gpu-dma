@@ -24,4 +24,7 @@ struct __align__(64) QueuePair
 
 __host__ DmaPtr prepareQueuePair(QueuePair& qp, const Controller& ctrl, const Settings& settings);
 
+// CHIA-HAO
+__host__ DmaPtr prepareQueuePairOnHost(QueuePair& qp, const Controller& ctrl, const Settings& settings);
+
 #endif

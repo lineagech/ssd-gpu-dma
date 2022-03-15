@@ -89,6 +89,9 @@ typedef struct __align__(64)
     int16_t                 phase;          // Current phase bit
     uint32_t                last;           // Used internally to check db writes
     volatile uint32_t*      db;             // Pointer to doorbell register (NB! write only)
+    // CHIA-HAO
+    volatile uint32_t*      host_db;        // For checking
+
     volatile void*          vaddr;          // Virtual address to start of queue memory
     uint64_t                ioaddr;         // Physical/IO address of the memory page
 } __attribute__((aligned (64))) nvm_queue_t;
