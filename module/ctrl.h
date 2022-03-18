@@ -7,6 +7,13 @@
 #include <linux/fs.h>
 #include <linux/device.h>
 
+// CHIA-HAO: add a debug flag here
+#define DEBUG 1
+#if DEBUG
+#define PRINTK(...) printk(__VA_ARGS__)
+#else
+#define PRINTK(...)
+#endif
 
 /*
  * Represents an NVM controller.

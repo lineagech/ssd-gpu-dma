@@ -307,6 +307,9 @@ int map_gpu_memory(struct map* map)
         printk(KERN_ERR "nvidia_p2p_dma_map_pages() failed: %d\n", err);
         return err;
     }
+    
+    // CHIA-HAO:
+    PRINTK("map->pdev devfn %u, bus %s, vendor %u, device %u\n", map->pdev->devfn, map->pdev->bus->name, map->pdev->vendor, map->pdev->device);
 
     if (map->n_addrs != gd->pages->entries)
     {
