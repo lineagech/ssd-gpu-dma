@@ -8,8 +8,8 @@ then
   fi
 fi
 
-echo -n "0000:05:00.0" | sudo tee /sys/bus/pci/drivers/nvme/unbind
-echo -n "0000:05:00.0" | sudo tee /sys/bus/pci/drivers/libnvm/bind
+echo -n "0000:64:00.0" | sudo tee /sys/bus/pci/drivers/nvme/unbind
+echo -n "0000:64:00.0" | sudo tee /sys/bus/pci/drivers/libnvm/bind
 
 
 NVM_IDENTIFY_BIN=$(find ~/p2p-research -name "nvm-identify")
