@@ -90,6 +90,13 @@ __host__ DmaPtr prepareQueuePair(QueuePair& qp, const Controller& ctrl, const Se
 
     // qmem->vaddr will be already a device pointer after the following call
     auto qmem = createDma(ctrl.ctrl, NVM_PAGE_ALIGN(queueMemSize + prpListSize, 1UL << 16), settings.cudaDevice, settings.adapter, settings.segmentId);
+    
+    // CHIA-HAO:
+    fprintf(stderr, "Allocate queue mem %zu bytes\n", NVM_PAGE_ALIGN(queueMemSize + prpListSize, 1UL << 16));
+    for (uint32_t i = 0; i < qmem->n_ioaddrs; i++) {
+        fprintf(stderr, "queue mem: %u-th page vaddr %lx and ioaddr %lx\n",
+                i, (uint64_t)qmem->vaddr+qmem->page_size*i, *(qmem->ioaddrs+i));    
+    }
 
     // Set members
     qp.pageSize = ctrl.info.page_size;
@@ -101,12 +108,17 @@ __host__ DmaPtr prepareQueuePair(QueuePair& qp, const Controller& ctrl, const Se
     qp.prpList = NVM_DMA_OFFSET(qmem, 2);
     qp.prpListIoAddr = qmem->ioaddrs[2];
     
+    // CHIA-HAO
+    fprintf(stderr, "%s: queu pair prpList %p (ioaddr %lx)\n", __func__, qp.prpList, qp.prpListIoAddr);
+
     // Create completion queue
     int status = nvm_admin_cq_create(ctrl.aq_ref, &qp.cq, 1, qmem->vaddr, qmem->ioaddrs[0]);
     if (!nvm_ok(status))
     {
         throw error(string("Failed to create completion queue: ") + nvm_strerror(status));
     }
+    // CHIA-HAO:
+    fprintf(stderr, "%s: cq vaddr %p, ioaddr %lx\n", __func__, qmem->vaddr, qmem->ioaddrs[0]);
 
     // Get a valid device pointer for CQ doorbell
     void* devicePtr = nullptr;
@@ -127,6 +139,9 @@ __host__ DmaPtr prepareQueuePair(QueuePair& qp, const Controller& ctrl, const Se
     {
         throw error(string("Failed to create submission queue: ") + nvm_strerror(status));
     }
+    // CHIA-HAO:
+    fprintf(stderr, "%s: cq vaddr %p, ioaddr %lx\n", __func__, NVM_DMA_OFFSET(qmem, 1), qmem->ioaddrs[1]);
+
 
     // Get a valid device pointer for SQ doorbell
     err = cudaHostGetDevicePointer(&devicePtr, (void*) qp.sq.db, 0);

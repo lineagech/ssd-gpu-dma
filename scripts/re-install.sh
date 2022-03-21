@@ -12,10 +12,10 @@ then
 fi
 
 ./install-libnvm.sh
-
 echo -n "0000:64:00.0" | sudo tee /sys/bus/pci/drivers/nvme/unbind
 echo -n "0000:64:00.0" | sudo tee /sys/bus/pci/drivers/libnvm/bind
 
+sudo chmod 777 /dev/libnvm0
 
 NVM_IDENTIFY_BIN=$(find ${TARGET_DIR}/p2p-research -name "nvm-identify")
 if [[ ! -z "${NVM_IDENTIFY_BIN}" ]]

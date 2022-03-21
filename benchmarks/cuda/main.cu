@@ -381,6 +381,12 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
     if (threadNum == 0)
     {
         *errCount = 0;
+        // CHIA-HAO
+        printf("%s: qp.sq.vaddr %p (ioaddr %lx) and sq doorbell %p, qp.cq.vaddr %p (ioaddr %lx) and cq doorbell %p", __func__,
+                qp->sq.vaddr, qp->sq.ioaddr, qp->sq.db,
+                qp->cq.vaddr, qp->cq.ioaddr, qp->cq.db);
+        printf("%s: sq prp list %p (ioaddr %lx)\n", __func__, qp->prpList, qp->prpListIoAddr);
+        printf("%s: src %p (ioaddr %lx) and dst %p\n", __func__, src, ioaddr, dst);
     }
     __syncthreads();
 
@@ -478,6 +484,10 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
         throw err;
     }
 
+    // CHIA-HAO
+    fprintf(stderr, "%s: buffer ptr %p, size %zu\n", __func__, deviceQueue.get(), sizeof(QueuePair));
+    fprintf(stderr, "%s: destination %p\n", __func__, destination.get());
+
     const size_t pageSize = ctrl.info.page_size;
     const size_t chunkSize = pageSize * settings.numPages;
     const size_t totalChunks = settings.numChunks * settings.numThreads;
@@ -485,6 +495,12 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
     // Create input buffer
     const size_t sourceBufferSize = NVM_PAGE_ALIGN((settings.doubleBuffered + 1) * chunkSize * settings.numThreads, 1UL << 16);
     auto source = createDma(ctrl.ctrl, sourceBufferSize, settings.cudaDevice, settings.adapter, settings.segmentId + 1); // vaddr is a dev ptr
+
+    // CHIA-HAO:
+    for (uint32_t i = 0; i < source->n_ioaddrs; i++) {
+        fprintf(stderr, "source buffer: %u-th page vaddr %lx and ioaddr %lx\n",
+                i, (uint64_t)source->vaddr+source->page_size*i, *(source->ioaddrs+i));    
+    }
 
     std::shared_ptr<CmdTime> times;
     if (settings.stats)
