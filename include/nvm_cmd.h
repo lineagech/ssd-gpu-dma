@@ -16,6 +16,9 @@
 /* All namespaces identifier */
 #define NVM_CMD_NS_ALL                  0xffffffff
 
+// CHIA-HAO: Define GPU-related params
+#define CTRL_PAGE_BITS 12
+#define CTRL_PAGE_MASK (~((1 << CTRL_PAGE_BITS) - 1))
 
 /* List of NVM IO command opcodes */
 enum nvm_io_command_set
@@ -116,6 +119,13 @@ size_t nvm_prp_list(size_t page_size, size_t n_pages, void* list_ptr, const uint
     size_t i_prp;
     uint64_t* list;
     
+    // CHIA-HAO: Get page offset, and assume transfer is multples of page size already
+    size_t off = data_ioaddrs[0] & (~CTRL_PAGE_MASK);
+    if (off != 0) 
+    {
+        n_pages++;
+    }
+
     if (prps_per_page < n_pages)
     {
         n_pages = prps_per_page;
@@ -124,7 +134,9 @@ size_t nvm_prp_list(size_t page_size, size_t n_pages, void* list_ptr, const uint
     list = (uint64_t*) list_ptr;
     for (i_prp = 0; i_prp < n_pages; ++i_prp)
     {
-        list[i_prp] = data_ioaddrs[i_prp];
+        //list[i_prp] = data_ioaddrs[i_prp];
+        // CHIA-HAO: align to SSD page size (4 KB), required by NVMe spec 1.3 section 4.3
+        list[i_prp] = data_ioaddrs[i_prp] & CTRL_PAGE_MASK;
     }
 
     nvm_cache_flush(list_ptr, sizeof(uint64_t) * i_prp);
