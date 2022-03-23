@@ -13,7 +13,7 @@ set (DIS "/opt/DIS" CACHE PATH "SISCI install location")
 set (NVIDIA "" CACHE PATH "Path to Nvidia driver source")
 set (KERNEL "/lib/modules/${CMAKE_SYSTEM_VERSION}/build" CACHE PATH "Path to kernel source, or module directory")
 
-set (nvidia_archs "30;50;52;60;61;70" CACHE STRING "NVIDIA compute architectures")
+set (nvidia_archs "80" CACHE STRING "NVIDIA compute architectures")
 set (no_smartio_samples false CACHE BOOL "Do not use SISCI for examples")
 set (no_smartio_benchmarks false CACHE BOOL "Do not use SISCI for benchmarks")
 set (no_smartio false CACHE BOOL "Do not use SISCI for library or examples")
@@ -39,7 +39,7 @@ set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2" CACHE INTERNAL "" FORC
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra" CACHE INTERNAL "" FORCE)
 set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_DEBUG} -g -DDEBUG" CACHE INTERNAL "" FORCE)
 set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2" CACHE INTERNAL "" FORCE)
-set (CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -D__CUDA__;-std=c++11;${GPU_ARCHS}")
+set (CUDA_NVCC_FLAGS "-g -G ${CUDA_NVCC_FLAGS} -D__CUDA__;-std=c++11;${GPU_ARCHS}")
 set (CUDA_NVCC_FLAGS_RELEASE "${CMAKE_NVCC_FLAGS_RELEASE} -O2" CACHE INTERNAL "" FORCE)
 
 if (no_cc)
@@ -111,7 +111,7 @@ endif ()
 
 
 # Create NVME library target
-add_library (libnvm ${libnvm_source})
+add_library (libnvm STATIC ${libnvm_source})
 target_include_directories (libnvm PRIVATE "${libnvm_root}" "${libnvm_root}/dis")
 
 
@@ -171,7 +171,7 @@ macro (make_sample target binary_name files)
     list (APPEND sample_targets "${target}")
     set (sample_targets "${sample_targets}" PARENT_SCOPE)
 
-    #install (TARGETS ${target} DESTINATION "bin")
+    install (TARGETS ${target} DESTINATION "bin")
 endmacro ()
 
 
