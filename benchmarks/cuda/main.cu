@@ -112,7 +112,7 @@ void waitForIoCompletion(nvm_queue_t* cq, nvm_queue_t* sq, uint64_t* errCount)
 
 
 __device__ static
-nvm_cmd_t* prepareChunk(QueuePair* qp, nvm_cmd_t* last, const uint64_t ioaddr, uint16_t offset, uint64_t blockOffset, uint32_t currChunk)
+nvm_cmd_t* prepareChunk(QueuePair* qp, nvm_cmd_t* last, const uint64_t ioaddr, uint16_t offset, uint64_t blockOffset, uint32_t currChunk, bool write = false)
 {
     nvm_cmd_t local;
     const uint16_t numThreads = blockDim.x;
@@ -142,7 +142,14 @@ nvm_cmd_t* prepareChunk(QueuePair* qp, nvm_cmd_t* last, const uint64_t ioaddr, u
     nvm_cmd_t* cmd = nvm_sq_enqueue_n(&qp->sq, last, numThreads, threadNum);
 
     // Set command fields
-    nvm_cmd_header(&local, threadNum, NVM_IO_READ, nvmNamespace);
+    if (write)
+    {
+        // J: Use NVM_IO_WRITE if write is set.
+        // J: The data to write to the NVMe drive must be in ioaddr location
+        nvm_cmd_header(&local, threadNum, NVM_IO_WRITE, nvmNamespace);
+    }
+    else
+        nvm_cmd_header(&local, threadNum, NVM_IO_READ, nvmNamespace);
     nvm_cmd_data(&local, pageSize, chunkPages, prpList, prpListAddr, addrs);
     nvm_cmd_rw_blks(&local, currBlock + blockOffset, blocksPerChunk);
     
@@ -302,7 +309,7 @@ void readDoubleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
 
 
 __global__ static
-void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* dst, size_t numChunks, uint64_t startBlock, uint64_t* errCount, CmdTime* times)
+void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* dst, size_t numChunks, uint64_t startBlock, uint64_t* errCount, CmdTime* times, bool write = false)
 {
     const uint16_t numThreads = blockDim.x;
     const uint16_t threadNum = threadIdx.x;
@@ -325,8 +332,17 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
 
     while (currChunk < numChunks)
     {
+        if (write)
+        {
+            // J: move bytes from destination buffer (which has the opened, read, and copied input file data)
+            // J: to the src buffer which will be passed on to the queue
+            moveBytes(dst, 0, src, currChunk * chunkSize, chunkSize * numThreads);
+            printf("%s: moveBytes() finished, from dst: %p -> src: %p\n", __func__, dst, src);
+        }
+
         // Prepare in advance next chunk
-        cmd = prepareChunk(qp, cmd, ioaddr, 0, blockOffset, currChunk);
+        // J: ioaddr is the src buffer's I/O address
+        cmd = prepareChunk(qp, cmd, ioaddr, 0, blockOffset, currChunk, write);
 
         // Consume completions for the previous window
         auto beforeSubmit = clock();
@@ -338,8 +354,11 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
         __syncthreads();
         auto afterSync = clock();
 
-        // Move received chunk
-        moveBytes(src, 0, dst, currChunk * chunkSize, chunkSize * numThreads);
+        if (!write)
+        {
+            // Move received chunk
+            moveBytes(src, 0, dst, currChunk * chunkSize, chunkSize * numThreads);
+        }
         auto afterMove = clock();
 
         // Record statistics
@@ -447,7 +466,7 @@ static double launchNvmKernel(const Controller& ctrl, BufferPtr destination, con
         }
         else
         {
-            readSingleBuffered<<<1, settings.numThreads>>>((QueuePair*) deviceQueue.get(), source->ioaddrs[0], source->vaddr, destination.get(), totalChunks, settings.startBlock, ec, times.get());
+            readSingleBuffered<<<1, settings.numThreads>>>((QueuePair*) deviceQueue.get(), source->ioaddrs[0], source->vaddr, destination.get(), totalChunks, settings.startBlock, ec, times.get(), settings.write);
         }
         Event after;
 
@@ -695,13 +714,37 @@ int main(int argc, char** argv)
 
         try
         {
+            if (settings.write)
+            {
+                // J: copy file contents to buffer
+                if (settings.filename == nullptr || settings.output != nullptr)
+                {
+                    throw error(string("No filename given to write to NVMe drive, or invalid option."));
+                }
+
+                size_t bufsize = sizeof(char) * ctrl.info.page_size * totalPages;
+                char *temp = (char *)malloc(bufsize);
+                memset(temp, 0, bufsize);
+
+                int fd = open(settings.filename, O_RDONLY);
+                read(fd, temp, bufsize);
+                close(fd);
+                
+                // J: use outputBuffer as input to the kernel (i.e., reverse of read)
+                cudaMemcpy(outputBuffer.get(), temp, bufsize, cudaMemcpyHostToDevice);
+                free(temp);
+
+                fprintf(stderr, "%s: read() from file and cudaMemcpy() to outputBuffer %p complete.\n", __func__, outputBuffer.get());
+            }
+
             double usecs = launchNvmKernel(ctrl, outputBuffer, settings, properties);
 
             fprintf(stderr, "Event time elapsed    : %.3f µs\n", usecs);
             fprintf(stderr, "Estimated bandwidth   : %.3f MiB/s\n", (totalPages * pageSize) / usecs);
 
-            if (settings.output != nullptr)
+            if (settings.output != nullptr && settings.write == false)
             {
+                // copy buffer contents (i.e., contents read from NVMe drive) to file
                 outputFile(outputBuffer, totalPages * pageSize, settings.output);
             }
         }

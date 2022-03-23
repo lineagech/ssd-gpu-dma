@@ -326,7 +326,9 @@ void Settings::parseArguments(int argc, char** argv)
         {'t', OptionPtr(new Range(numThreads, 1, 32, "threads", "number of CUDA threads", "32"))},
         {'o', OptionPtr(new Option<const char*>(output, "path", "output", "output read data to file"))},
         {'s', OptionPtr(new Option<uint64_t>(startBlock, "offset", "offset", "number of blocks to offset", "0"))},
-        {'b', OptionPtr(new Option<const char*>(blockDevicePath, "path", "block-device", "path to block device"))}
+        {'b', OptionPtr(new Option<const char*>(blockDevicePath, "path", "block-device", "path to block device"))},
+        {'w', OptionPtr(new Option<bool>(write, "bool", "write", "write to NVMe drive", "false"))},
+        {'W', OptionPtr(new Option<const char*>(filename, "path", "filename", "filename to read"))}
     };
 
     string optionString;
@@ -413,6 +415,8 @@ Settings::Settings()
     domain = 0;
     bus = 0;
     devfn = 0;
+    write = false;
+    filename = nullptr;
 }
 
 
