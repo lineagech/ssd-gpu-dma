@@ -33,8 +33,6 @@ static void getDeviceMemory(int device, void*& bufferPtr, void*& devicePtr, size
     {
         throw error(string("Failed to allocate device memory: ") + cudaGetErrorString(err));
     }
-    // CHIA-HAO
-    fprintf(stderr, "%s: bufferPtr %p, size %zu\n", __func__, bufferPtr, size);
 
     err = cudaMemset(bufferPtr, 0, size);
     if (err != cudaSuccess)
@@ -110,12 +108,7 @@ DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice)
         throw error(string("Failed to map device memory: ") + nvm_strerror(status));
     }
 
-    // CHIA-HAO
-    fprintf(stderr, "%s: Check if device ptr is aligned to 64KB --- devicePtr %p, dma->vaddr %p (ioaddr %lx)\n", __func__, devicePtr, dma->vaddr, *(dma->ioaddrs));
-
     //dma->vaddr = bufferPtr;
-    // CHIA-HAO
-    fprintf(stderr, "bufferPtr %p, devicePtr %p, dma vaddr %p, dma ioaddr %lx\n", bufferPtr, devicePtr, dma->vaddr, dma->ioaddrs[0]);
 
     return DmaPtr(dma, [bufferPtr](nvm_dma_t* dma) {
         nvm_dma_unmap(dma);
@@ -150,7 +143,7 @@ BufferPtr createBuffer(size_t size, int cudaDevice)
     void* bufferPtr = nullptr;
 
     getDeviceMemory(cudaDevice, bufferPtr, size);
-    
+
     return BufferPtr(bufferPtr, [](void* ptr) { cudaFree(ptr); });
 }
 
@@ -206,12 +199,6 @@ DmaPtr createDma(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t, 
 {
     return createDma(ctrl, size, cudaDevice);
 }
-
-DmaPtr createDmaOnHost(const nvm_ctrl_t* ctrl, size_t size, int cudaDevice, uint32_t, uint32_t)
-{
-    return createDma(ctrl, size);
-}
-
 #endif
 
 

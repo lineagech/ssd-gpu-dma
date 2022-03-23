@@ -141,10 +141,6 @@ int _nvm_dma_create(nvm_dma_t** handle, const nvm_ctrl_t* ctrl, struct dma_map* 
         dprintf("Failed to allocate DMA descriptor: %s\n", strerror(errno));
         return ENOMEM;
     }
-    // CHIA-HAO
-    else {
-        fprintf(stderr, "container %p\n", container);
-    }
 
     container->map = md;
     container->release = release;
@@ -479,18 +475,9 @@ int nvm_dma_map_host(nvm_dma_t** handle, const nvm_ctrl_t* ctrl, void* vaddr, si
 
 
 #ifdef _CUDA
-
-// CHIA-HAO
-#define GPU_PAGE_BITS (16)
-#define GPU_PAGE_MASK ~((1<<GPU_PAGE_BITS) - 1)
-
 int nvm_dma_map_device(nvm_dma_t** handle, const nvm_ctrl_t* ctrl, void* devptr, size_t size)
 {
     struct ioctl_mapping* md;
-    
-    // CHIA-HAO: make alignment here
-    size_t off = (size_t)devptr & ~(GPU_PAGE_MASK);
-    uint32_t i = 0;
 
     *handle = NULL;
 
@@ -519,12 +506,6 @@ int nvm_dma_map_device(nvm_dma_t** handle, const nvm_ctrl_t* ctrl, void* devptr,
         remove_mapping(md);
         *handle = NULL;
         return err;
-    }
-
-    // CHIA-HAO: add offset to ioaddrs 
-    fprintf(stderr, "%s: off for %p is %zx\n", __func__, devptr, off);
-    for (i = 0; i < (*handle)->n_ioaddrs; i++) {
-        (*handle)->ioaddrs[i] += off;
     }
 
     return 0;
