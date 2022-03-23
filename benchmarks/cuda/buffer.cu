@@ -28,6 +28,12 @@ static void getDeviceMemory(int device, void*& bufferPtr, void*& devicePtr, size
         throw error(string("Failed to set CUDA device: ") + cudaGetErrorString(err));
     }
 
+    // J: Align the result of cudaMalloc() to page boundary
+    if (size < (1 << 16))
+    {
+        size = NVM_PAGE_ALIGN(size, 1 << 16);
+    }
+
     err = cudaMalloc(&bufferPtr, size);
     if (err != cudaSuccess)
     {
