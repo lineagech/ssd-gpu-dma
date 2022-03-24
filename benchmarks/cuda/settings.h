@@ -26,6 +26,8 @@ struct Settings
     uint32_t        domain;
     uint32_t        bus;
     uint32_t        devfn;
+    bool            write;      // J: write to NVMe?
+    const char*     filename;   // J: file to write
 
     Settings();
     void parseArguments(int argc, char** argv);

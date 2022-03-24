@@ -79,9 +79,6 @@ static int mmap_registers(struct file* file, struct vm_area_struct* vma)
         printk(KERN_WARNING "Invalid range size\n");
         return -EINVAL;
     }
-    
-    // CHIA-HAO:
-    PRINTK("%s: vma->start %lx - vma->end %lx (BAR0 size %llu)\n", __func__, vma->vm_start, vma->vm_end, pci_resource_len(ctrl->pdev, 0));
 
     vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
     return vm_iomap_memory(vma, pci_resource_start(ctrl->pdev, 0), vma->vm_end - vma->vm_start);
@@ -136,9 +133,6 @@ static long map_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
             }
 
             map = map_device_memory(&device_list, ctrl, request.vaddr_start, request.n_pages);
-            
-            // CHIA-HAO
-            PRINTK("map_device_memory: vaddr start %llx, # pages %zu\n", request.vaddr_start, request.n_pages);
 
             if (!IS_ERR_OR_NULL(map))
             {
