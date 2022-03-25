@@ -34,6 +34,7 @@ struct __align__(64) CmdTime
     uint64_t    submitTime;
     uint64_t    completeTime;
     uint64_t    moveTime;
+    uint64_t    beforeMoveTime; // J: support for write statistics
 };
 
 
@@ -104,6 +105,7 @@ void waitForIoCompletion(nvm_queue_t* cq, nvm_queue_t* sq, uint64_t* errCount)
         if (!NVM_ERR_OK(cpl))
         {
             *errCount = *errCount + 1;
+            printf("%s: NVM ERROR: %X %X\n", __func__, NVM_ERR_SC(cpl), NVM_ERR_SCT(cpl));
         }
     }
 
@@ -332,12 +334,16 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
 
     while (currChunk < numChunks)
     {
+        uint64_t beforeMove, afterMove;
         if (write)
         {
             // J: move bytes from destination buffer (which has the opened, read, and copied input file data)
             // J: to the src buffer which will be passed on to the queue
-            moveBytes(dst, 0, src, currChunk * chunkSize, chunkSize * numThreads);
-            printf("%s: moveBytes() finished, from dst: %p -> src: %p\n", __func__, dst, src);
+            beforeMove = clock();
+            moveBytes(dst, currChunk * chunkSize, src, 0, chunkSize * numThreads);
+            afterMove = clock();
+            if (threadNum == 0)
+                printf("%s thread0: moveBytes() complete, from dst: %p (offset: %lu) -> src: %p\n", __func__, dst, currChunk * chunkSize, src);
         }
 
         // Prepare in advance next chunk
@@ -358,8 +364,8 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
         {
             // Move received chunk
             moveBytes(src, 0, dst, currChunk * chunkSize, chunkSize * numThreads);
+            afterMove = clock();
         }
-        auto afterMove = clock();
 
         // Record statistics
         if (times != nullptr && threadNum == 0)
@@ -369,6 +375,7 @@ void readSingleBuffered(QueuePair* qp, const uint64_t ioaddr, void* src, void* d
             t->submitTime = beforeSubmit;
             t->completeTime = afterSync;
             t->moveTime = afterMove;
+            t->beforeMoveTime = beforeMove; // J: support for write statistics
         }
         __syncthreads();
     
@@ -402,6 +409,13 @@ static void printStatistics(const Settings& settings, const cudaDeviceProp& prop
         auto diskTime = (t.completeTime - t.submitTime) / rate;
         auto moveTime = (t.moveTime - t.completeTime) / rate;
         auto totalTime = (t.moveTime - t.submitTime) / rate;
+
+        if (settings.write)
+        {
+            // J: support for write statistics (override time based on read)
+            moveTime = (t.moveTime - t.beforeMoveTime) / rate;
+            totalTime = (t.completeTime - t.beforeMoveTime) / rate;
+        }
 
         auto diskBw = times[i].size / diskTime;
         auto moveBw = times[i].size / moveTime;
@@ -717,7 +731,7 @@ int main(int argc, char** argv)
             if (settings.write)
             {
                 // J: copy file contents to buffer
-                if (settings.filename == nullptr || settings.output != nullptr)
+                if (settings.filename == nullptr || settings.output != nullptr || settings.doubleBuffered != false)
                 {
                     throw error(string("No filename given to write to NVMe drive, or invalid option."));
                 }
@@ -734,7 +748,7 @@ int main(int argc, char** argv)
                 cudaMemcpy(outputBuffer.get(), temp, bufsize, cudaMemcpyHostToDevice);
                 free(temp);
 
-                fprintf(stderr, "%s: read() from file and cudaMemcpy() to outputBuffer %p complete.\n", __func__, outputBuffer.get());
+                fprintf(stderr, "%s: read() from file and cudaMemcpy() -> outputBuffer %p complete, bytes: %lu\n", __func__, outputBuffer.get(), bufsize);
             }
 
             double usecs = launchNvmKernel(ctrl, outputBuffer, settings, properties);
